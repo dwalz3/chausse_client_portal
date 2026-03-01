@@ -1,11 +1,19 @@
 /**
  * buildCatalog — joins Vinosmith data into CatalogWine[] + CatalogProducer[]
+ *
+ * Data sources:
+ *   RB1 (inventory_detailed.xlsx) — primary active wine list: pricing, availability
+ *   wine_properties.csv            — supplemental: farming flags, varietals, tasting notes
+ *   RA21                           — rank badges (top sellers)
+ *   RA30                           — new arrival flags
+ *
  * Server-only. Called from Server Components.
  */
 
 import { CatalogWine, CatalogProducer } from '@/types';
-import { getWinePropertiesRows, getRa21Rows, getRa30Rows } from './vinosmith';
+import { getWinePropertiesRows, getRb1Rows, getRa21Rows, getRa30Rows } from './vinosmith';
 import { parseWinePropertiesFromRows } from '@/parsers/winePropertiesParser';
+import { parseRb1FromRows } from '@/parsers/rb1Parser';
 import { parseRa21FromRows } from '@/parsers/ra21Parser';
 import { parseRa30FromRows } from '@/parsers/ra30Parser';
 import { slugify } from './slugify';
@@ -22,17 +30,15 @@ function isNewArrival(placedAt: string | null): boolean {
   return diffDays <= 90;
 }
 
-let catalogCache: { wines: CatalogWine[]; producers: CatalogProducer[] } | null = null;
-let cacheBuiltAt = 0;
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour in-process cache
-
 async function buildCatalogInternal(): Promise<{ wines: CatalogWine[]; producers: CatalogProducer[] }> {
+  let rb1Raw: unknown[][] = [];
   let wpRaw: unknown[][] = [];
   let ra21Raw: unknown[][] = [];
   let ra30Raw: unknown[][] = [];
 
   try {
-    [wpRaw, ra21Raw, ra30Raw] = await Promise.all([
+    [rb1Raw, wpRaw, ra21Raw, ra30Raw] = await Promise.all([
+      getRb1Rows(),
       getWinePropertiesRows(),
       getRa21Rows(),
       getRa30Rows(),
@@ -42,34 +48,41 @@ async function buildCatalogInternal(): Promise<{ wines: CatalogWine[]; producers
     return { wines: [], producers: [] };
   }
 
+  const rb1Rows = parseRb1FromRows(rb1Raw);
   const wpRows = parseWinePropertiesFromRows(wpRaw);
   const ra21Rows = parseRa21FromRows(ra21Raw);
   const ra30Rows = parseRa30FromRows(ra30Raw);
 
   // Build lookup maps by normalized wine code
+  const wpMap = new Map(wpRows.map((r) => [normCode(r.wineCode), r]));
   const ra21Map = new Map(ra21Rows.map((r) => [normCode(r.wineCode), r]));
   const ra30Map = new Map(ra30Rows.map((r) => [normCode(r.wineCode), r]));
 
-  const wines: CatalogWine[] = wpRows.map((wp) => {
-    const nc = normCode(wp.wineCode);
+  // Build catalog from RB1 (active wines), enrich with wine-properties metadata
+  const wines: CatalogWine[] = rb1Rows.map((rb1) => {
+    const nc = normCode(rb1.wineCode);
+    const wp = wpMap.get(nc) ?? null;
     const ra21 = ra21Map.get(nc) ?? null;
     const ra30 = ra30Map.get(nc) ?? null;
 
+    // RB1 is ground truth for name, pricing, availability
+    // wine-properties supplements farming flags and detailed metadata
     return {
-      code: wp.wineCode,
-      name: wp.wineName || wp.name,
-      fullName: wp.name,
-      producer: wp.producer,
-      producerSlug: slugify(wp.producer),
-      country: wp.country,
-      region: wp.region,
-      wineType: wp.wineType,
-      varietal: wp.varietal,
-      vintage: wp.vintage,
-      bottlePrice: 0, // pricing not from wine-properties; can be extended later
-      isNatural: wp.isNatural,
-      isBiodynamic: wp.isBiodynamic,
-      isDirect: wp.isDirect,
+      code: rb1.wineCode,
+      name: rb1.name,
+      fullName: rb1.name,
+      producer: rb1.producer,
+      producerSlug: slugify(rb1.producer),
+      country: rb1.country,
+      region: rb1.appellation || rb1.region,
+      wineType: rb1.wineType,
+      varietal: rb1.varietal || (wp?.varietal ?? ''),
+      vintage: rb1.vintage,
+      bottlePrice: rb1.bottlePrice,
+      // Farming flags come from wine-properties (has Biodynamic/Organic columns)
+      isNatural: wp?.isNatural ?? false,
+      isBiodynamic: wp?.isBiodynamic ?? false,
+      isDirect: rb1.importer.toLowerCase().includes('chausse') || (wp?.isDirect ?? false),
       isNewArrival: ra30 ? isNewArrival(ra30.placedAt) : false,
       rank: ra21 ? ra21.rank : null,
     };
@@ -78,37 +91,32 @@ async function buildCatalogInternal(): Promise<{ wines: CatalogWine[]; producers
   // Build producers by grouping wines
   const producerMap = new Map<string, CatalogWine[]>();
   for (const wine of wines) {
-    const key = wine.producer;
-    if (!producerMap.has(key)) producerMap.set(key, []);
-    producerMap.get(key)!.push(wine);
+    if (!producerMap.has(wine.producer)) producerMap.set(wine.producer, []);
+    producerMap.get(wine.producer)!.push(wine);
   }
 
-  const producers: CatalogProducer[] = Array.from(producerMap.entries()).map(([name, pw]) => {
-    const first = pw[0];
-    const anyDirect = pw.some((w) => w.isDirect);
-    return {
-      name,
-      slug: slugify(name),
-      country: first.country,
-      region: first.region,
-      isDirect: anyDirect,
-      wineCount: pw.length,
-      wines: pw,
-    };
-  }).sort((a, b) => a.name.localeCompare(b.name));
+  const producers: CatalogProducer[] = Array.from(producerMap.entries())
+    .map(([name, pw]) => {
+      const first = pw[0];
+      return {
+        name,
+        slug: slugify(name),
+        country: first.country,
+        region: first.region,
+        isDirect: pw.some((w) => w.isDirect),
+        wineCount: pw.length,
+        wines: pw,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return { wines, producers };
 }
 
+// ── Public API ───────────────────────────────────────────────────────────────
+
 export async function getCatalog(): Promise<{ wines: CatalogWine[]; producers: CatalogProducer[] }> {
-  const now = Date.now();
-  if (catalogCache && now - cacheBuiltAt < CACHE_TTL_MS) {
-    return catalogCache;
-  }
-  const result = await buildCatalogInternal();
-  catalogCache = result;
-  cacheBuiltAt = now;
-  return result;
+  return buildCatalogInternal();
 }
 
 export async function getAllWines(): Promise<CatalogWine[]> {
@@ -140,7 +148,7 @@ export async function getFeaturedWines(codes: string[]): Promise<CatalogWine[]> 
     const wine = wineMap.get(normCode(code));
     if (wine) featured.push(wine);
   }
-  // fallback to RA21 top 6 if not enough
+  // Fallback to RA21 top 6 if featured.json is empty or codes don't resolve
   if (featured.length < 6) {
     const ranked = wines
       .filter((w) => w.rank !== null && !featured.some((f) => f.code === w.code))

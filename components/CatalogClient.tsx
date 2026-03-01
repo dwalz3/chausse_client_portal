@@ -12,10 +12,30 @@ interface CatalogClientProps {
   wines: CatalogWine[];
 }
 
-export function CatalogClient({ wines }: CatalogClientProps) {
+const STORAGE_KEY = 'chausse_rb1_override';
+
+export function CatalogClient({ wines: serverWines }: CatalogClientProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+
+  // Check localStorage for admin-uploaded RB1 override
+  const [wines, setWines] = useState<CatalogWine[]>(serverWines);
+  const [hasOverride, setHasOverride] = useState(false);
+  useEffect(() => {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      try {
+        const overrideWines = JSON.parse(raw) as CatalogWine[];
+        if (overrideWines.length > 0) {
+          setWines(overrideWines);
+          setHasOverride(true);
+        }
+      } catch {
+        // ignore malformed data
+      }
+    }
+  }, []);
 
   const [query, setQuery] = useState(searchParams.get('q') ?? '');
   const [selectedType, setSelectedType] = useState<WineType | ''>(
@@ -80,6 +100,30 @@ export function CatalogClient({ wines }: CatalogClientProps) {
 
   return (
     <div>
+      {/* Override banner */}
+      {hasOverride && (
+        <div style={{
+          backgroundColor: '#FEF3C7',
+          border: '1px solid #F59E0B',
+          borderRadius: '6px',
+          padding: '0.6rem 1rem',
+          marginBottom: '1rem',
+          fontSize: '0.8rem',
+          color: '#92400E',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}>
+          <span>Showing uploaded RB1 data ({wines.length} wines)</span>
+          <button
+            onClick={() => { localStorage.removeItem(STORAGE_KEY); setWines(serverWines); setHasOverride(false); }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#92400E', fontWeight: 600, fontSize: '0.8rem' }}
+          >
+            Revert to live ×
+          </button>
+        </div>
+      )}
+
       {/* Search + filter bar */}
       <div style={{
         display: 'flex',

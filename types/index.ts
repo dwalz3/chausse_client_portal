@@ -47,6 +47,8 @@ export interface WinePropertyRow {
   isNatural: boolean;
   isBiodynamic: boolean;
   isDirect: boolean;
+  bottlePrice: number;
+  availableQty: number;  // -1 = unknown, 0+ = actual qty
 }
 
 export interface Ra21Row {
