@@ -1,5 +1,28 @@
 # Changelog — Chausse Client Portal
 
+## v1.2.1 — 2026-03-01
+
+### Fixed
+- `components/CatalogClient.tsx` — stale localStorage schema validation: auto-clears override data uploaded before `importer` field was added (v1.2.0), preventing `—` placeholder in Importer column
+
+### Added
+- `components/CatalogClient.tsx` — Varietal column in spreadsheet table (sortable); Varietal added to sort key union type and Fuse.js search fields already included it
+
+---
+
+## v1.2.0 — 2026-03-01
+
+### Added
+- `parsers/rb1Parser.ts` — RB1 inventory XLSX parser (Inventory sheet, Status=Active filter); provides importer, availableQty, pricing
+- `components/AdminUpload.tsx` — password-gated /admin upload page; drag-drop RB1 XLSX → client-side parse → localStorage override
+- `app/admin/page.tsx` — admin route (hidden, password-protected)
+- `types/index.ts` — added `importer: string` and `availableQty: number` to `CatalogWine`; added `Rb1Row` parser type
+- `lib/vinosmith.ts` — added `getRb1Rows()` (inventory_detailed.xlsx); fixed URL format to vinosmith.com/ext/exports/rep/{UUID}/
+- `lib/buildCatalog.ts` — RB1 as primary active wine list; wine_properties.csv supplements farming flags
+- `components/CatalogClient.tsx` — full rewrite: spreadsheet table UI replacing card grid; sortable columns; Fuse.js search; type/country/farming filters; hash-colored Importer/Region/Country chips; localStorage override with revert banner
+
+---
+
 ## v1.0.0 — 2026-03-01
 
 Initial build. Public-facing wine catalog for trade buyers.

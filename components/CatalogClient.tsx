@@ -9,7 +9,7 @@ import { WINE_TYPE_COLORS } from '@/lib/wineTypeColors';
 const WINE_TYPES: WineType[] = ['Red', 'White', 'Rosé', 'Sparkling', 'Orange', 'Vermouth', 'Tea/NA', 'Other'];
 const STORAGE_KEY = 'chausse_rb1_override';
 
-type SortKey = 'name' | 'bottlePrice' | 'availableQty' | 'country' | 'region' | 'wineType' | 'producer' | 'importer';
+type SortKey = 'name' | 'bottlePrice' | 'availableQty' | 'country' | 'region' | 'wineType' | 'producer' | 'importer' | 'varietal';
 type SortDir = 'asc' | 'desc';
 
 // Deterministic pastel chip color from string value
@@ -66,7 +66,13 @@ export function CatalogClient({ wines: serverWines }: CatalogClientProps) {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const override = JSON.parse(raw) as CatalogWine[];
-        if (override.length > 0) { setWines(override); setHasOverride(true); }
+        // Validate schema has required fields (importer/availableQty added v1.2.0)
+        const valid = override.length > 0 && override[0].importer !== undefined;
+        if (valid) { setWines(override); setHasOverride(true); }
+        else if (override.length > 0) {
+          // Stale data — clear it
+          localStorage.removeItem(STORAGE_KEY);
+        }
       }
     } catch { /* ignore */ }
   }, []);
@@ -126,6 +132,7 @@ export function CatalogClient({ wines: serverWines }: CatalogClientProps) {
         case 'wineType':  av = a.wineType; bv = b.wineType; break;
         case 'producer':  av = a.producer; bv = b.producer; break;
         case 'importer':  av = a.importer; bv = b.importer; break;
+        case 'varietal':  av = a.varietal; bv = b.varietal; break;
       }
       const cmp = typeof av === 'number'
         ? av - (bv as number)
@@ -247,6 +254,9 @@ export function CatalogClient({ wines: serverWines }: CatalogClientProps) {
               <th style={{ ...thStyle('wineType'), width: '90px' }} onClick={() => toggleSort('wineType')}>
                 Type <SortArrow col="wineType" />
               </th>
+              <th style={{ ...thStyle('varietal'), width: '140px' }} onClick={() => toggleSort('varietal')}>
+                Varietal <SortArrow col="varietal" />
+              </th>
               <th style={{ ...thStyle('importer'), width: '160px' }} onClick={() => toggleSort('importer')}>
                 Importer <SortArrow col="importer" />
               </th>
@@ -311,6 +321,10 @@ export function CatalogClient({ wines: serverWines }: CatalogClientProps) {
                       }}>
                         {wine.wineType}
                       </span>
+                    </td>
+                    {/* Varietal */}
+                    <td style={{ padding: '7px 10px', verticalAlign: 'middle', color: '#44403C', fontSize: '0.82rem' }}>
+                      {wine.varietal || <span style={{ color: '#C4B5A5' }}>—</span>}
                     </td>
                     {/* Importer */}
                     <td style={{ padding: '7px 10px', verticalAlign: 'middle' }}>
