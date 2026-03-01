@@ -6,12 +6,14 @@ export interface CatalogWine {
   fullName: string;      // raw full name from Vinosmith
   producer: string;
   producerSlug: string;  // for /producers/[slug]
+  importer: string;      // for importer chip in table view
   country: string;
   region: string;
   wineType: WineType;
   varietal: string;
   vintage: string;
   bottlePrice: number;   // 0 if not available in source data
+  availableQty: number;  // from RB1 Available column
   isNatural: boolean;
   isBiodynamic: boolean;
   isDirect: boolean;

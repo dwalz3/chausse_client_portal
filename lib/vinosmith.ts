@@ -56,16 +56,18 @@ export const getRb1Rows = unstable_cache(
   { revalidate: 3600 }
 );
 
-// ra21 — top wines by sales (rank badges)
+// RA21 — top wines by sales (rank badges)
+// Vinosmith report export: /ext/exports/rep/{UUID}/reports/ra21.xlsx
 export const getRa21Rows = unstable_cache(
-  () => fetchXlsx('ra21'),
+  () => fetchXlsx('reports/ra21.xlsx'),
   ['vino-ra21'],
   { revalidate: 3600 }
 );
 
-// ra30 — new placements
+// RA30 — new placements
+// Vinosmith report export: /ext/exports/rep/{UUID}/reports/ra30.xlsx
 export const getRa30Rows = unstable_cache(
-  () => fetchXlsx('ra30'),
+  () => fetchXlsx('reports/ra30.xlsx'),
   ['vino-ra30'],
   { revalidate: 3600 }
 );
